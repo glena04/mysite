@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coordinate Lookup</title>
+   
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+
+        #container {
+            width: 300px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        button {
+            padding: 10px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
+        #map {
+            height: 300px;
+            width: 100%;
+            margin-top: 90px;
+        }
+
+        #suggestions {
+            margin-top: 10px;
+            margin-left: 40px;
+            margin-right: 40px;
+            text-align: left;
+        }
+
+        .suggestion {
+            padding: 5px;
+            cursor: pointer;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+        }
+
+        .suggestion:hover {
+            background-color: #c66464;
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+
+<div id="container">
+    <h2>Coordinate Lookup</h2>
+    <label for="locationNumber">Enter Location Number:</label>
+    <input type="text" id="locationNumber" placeholder="Enter number">
+    <div id="suggestions"></div>
+
+    <button onclick="searchCoordinates()">Search</button>
+
+    <div id="result"></div>
+
+    <div id="map"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.4/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+    var map = L.map('map').setView([0, 0], 1);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    var marker;
+
+    document.getElementById('locationNumber').addEventListener('input', function() {
+        var locationText = document.getElementById("locationNumber").value;
+        updateSuggestions(locationText);
+    });
+
+    function updateSuggestions(locationText) {
+        var filePath = "http://127.0.0.1:5500/Bok1.xlsx";
+
+        fetch(filePath)
+            .then(response => response.arrayBuffer())
+            .then(data => {
+                var workbook = XLSX.read(data, { type: 'array' });
+                var sheet = workbook.Sheets[workbook.SheetNames[0]];
+                var jsonData = XLSX.utils.sheet_to_json(sheet);
+
+                var suggestionsHtml = '';
+
+                var relevantSuggestions = jsonData
+                    .map(entry => entry.locationNumber.toString())
+                    .filter(suggestion =>
+                        suggestion.includes(locationText.toLowerCase())).slice(0, 5);
+
+                relevantSuggestions.forEach(suggestion => {
+                    suggestionsHtml += `<div class="suggestion" onclick="selectSuggestion('${suggestion}')">${suggestion}</div>`;
+                });
+
+                document.getElementById('suggestions').innerHTML = suggestionsHtml;
+                document.getElementById('suggestions').style.display = 'block';
+
+                var suggestionElements = document.querySelectorAll('.suggestion');
+                suggestionElements.forEach(element => {
+                    element.addEventListener('click', function() {
+                        document.getElementById('locationNumber').value = element.innerText;
+                        document.getElementById('suggestions').style.display = 'none';
+                    });
+                });
+            })
+            .catch(error => console.error('Error reading the file:', error));
+    }
+
+    function searchCoordinates() {
+        var locationText = document.getElementById("locationNumber").value;
+
+        var filePath = "http://127.0.0.1:5500/Bok1.xlsx";
+
+        fetch(filePath)
+            .then(response => response.arrayBuffer())
+            .then(data => {
+                var workbook = XLSX.read(data, { type: 'array' });
+                var sheetName = "locationNumber";
+                var sheet = workbook.Sheets[sheetName];
+                var jsonData = XLSX.utils.sheet_to_json(sheet);
+
+                var coordinates = findCoordinates(jsonData, locationText);
+                if (coordinates) {
+                    var link = `https://www.openstreetmap.org/?mlat=${coordinates.Latitude}&mlon=${coordinates.Longitude}#map=15/${coordinates.Latitude}/${coordinates.Longitude}`;
+                    var osmandLink = `osmandmaps://?lat=${coordinates.Latitude}&lon=${coordinates.Longitude}&z=15`;
+                    var resultDiv = document.getElementById("result");
+                    resultDiv.innerHTML = `<p>Coordinates found:</p><p>Latitude: ${coordinates.Latitude}</p><p>Longitude: ${coordinates.Longitude}</p><a href="${link}" target="_blank">Open in OpenStreetMap</a> | <a href="${osmandLink}" target="_blank">Open in Osmand</a>`;
+
+                    if (marker) {
+                        marker.setLatLng([coordinates.Latitude, coordinates.Longitude]);
+                        marker.bindPopup(`<p>Location: ${locationText}</p><a href="${osmandLink}" target="_blank">Open in Osmand</a>`);
+                    } else {
+                        marker = L.marker([coordinates.Latitude, coordinates.Longitude]).addTo(map)
+                            .bindPopup(`<p>Location: ${locationText}</p><a href="${osmandLink}" target="_blank">Open in Osmand</a>`);
+                    }
+
+                    map.setView([coordinates.Latitude, coordinates.Longitude], 13);
+                } else {
+                    alert("Location number not found in the Excel data.");
+                }
+            })
+            .catch(error => console.error('Error reading the file:', error));
+    }
+
+    function findCoordinates(data, locationText) {
+        return data.find(entry => entry.locationNumber.toString() === locationText);
+    }
+</script>
+
+</body>
+</html>
+
+
